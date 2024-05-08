@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "SimpleFTP": {
+      "commandName": "Project",
+      "commandLineArgs": "server randompath"
+    }
+  }
+}
