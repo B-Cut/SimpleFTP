@@ -38,8 +38,25 @@ namespace SimpleFTP.Server
         {
             this.buffer = buffer;
             this.workingDirectory = workingDirectory;
-            this.stream = null;
-            this.type = TransferType.BINARY; // Default from the specification
+            stream = null;
+            type = TransferType.BINARY; // Default from the specification
+        }
+
+        // Not really right by OOP standarts, but useful. Might be moved to another class if state
+        // gets too many functions/responsabilities
+        public async Task SendMessage(string message)
+        {
+            // Strings are always null terminated
+            var convertedMessage = Encoding.ASCII.GetBytes(message + "\0");
+
+            try
+            {
+                await stream.WriteAsync(convertedMessage, 0, convertedMessage.Length);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex.Message);
+            }
         }
     }
 
@@ -84,7 +101,7 @@ namespace SimpleFTP.Server
             {
                 // First we wait for a connection
                 _listener.Start();
-                Console.WriteLine("Server Started...");
+                Console.WriteLine("Server started...");
                 Console.WriteLine($"Awaiting connection on {_listener.LocalEndpoint}...");
                 using TcpClient handler = _listener.AcceptTcpClient();
                 Console.WriteLine("Stabilishing a stream...");
@@ -103,13 +120,14 @@ namespace SimpleFTP.Server
                     int received = await _state.Stream.ReadAsync(_state.Buffer, 0, _state.Buffer.Length);
                     string command = Encoding.ASCII.GetString(_state.Buffer, 0, received);
                     Console.WriteLine($"Received command: {command}");
-                    
-                    await ParseCommand(command);
+
+                    await CommandHandler.ParseCommand(command, _state);
                 }
 
 
             }
-            catch (IOException e){
+            catch (IOException e)
+            {
                 Console.WriteLine("Connection was forcibly closed");
                 // TODO: Make server persist through connection closing
             }
@@ -120,52 +138,6 @@ namespace SimpleFTP.Server
             finally
             {
                 _listener.Stop();
-            }
-        }
-
-        private async Task ParseCommand(string command)
-        {
-            string[] splitCommand = command.Split(" ");
-            
-            switch (splitCommand[0].ToUpper())
-            {
-                case "USER":
-                    Console.WriteLine("Received the USER command");
-                    break;
-                case "ACCT":
-                    Console.WriteLine("Received the ACCT command");
-                    break;
-                case "PASS":
-                    Console.WriteLine("Received the PASS command");
-                    break;
-                case "TYPE":
-                    await CommandHandler.HandleType(_state, splitCommand);
-                    break;
-                case "LIST":
-                    Console.WriteLine("Received the LIST command");
-                    break;
-                case "CDIR":
-                    Console.WriteLine("Received the CDIR command");
-                    break;
-                case "KILL":
-                    Console.WriteLine("Received the KILL command");
-                    break;
-                case "NAME":
-                    Console.WriteLine("Received the NAME command");
-                    break;
-                case "DONE":
-                    Console.WriteLine("Received the DONE command");
-                    break;
-                case "RETR":
-                    Console.WriteLine("Received the RETR command");
-                    break;
-                case "STOR":
-                    Console.WriteLine("Received the STOR command");
-                    break;
-                default:
-                    var message = Encoding.ASCII.GetBytes($"-Invalid command");
-                    await _state.Stream.WriteAsync(message, 0, message.Length);
-                    break;
             }
         }
     }

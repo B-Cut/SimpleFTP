@@ -9,6 +9,7 @@
 
 using System;
 using CommandLine;
+using SimpleFTP.Client;
 
 namespace SimpleFTP;
 
@@ -20,11 +21,20 @@ internal class Program
 
         result.WithParsed<ServerOptions>(options =>
         {
-           Server.SimpleFtpServer server = new Server.SimpleFtpServer(options.startingDirectory, options.Port);
+            if (Directory.Exists(options.startingDirectory))
+            {
+                Server.SimpleFtpServer server = new Server.SimpleFtpServer(options.startingDirectory, options.Port);
+            }
+            else
+            {
+                Console.WriteLine(Directory.GetCurrentDirectory() + options.startingDirectory);
+                Console.Error.WriteLine($"Error: Directory \"{options.startingDirectory}\" does not exist.");
+            }
+
         })
         .WithParsed<ClientOptions>(options =>
         {
-            Client.SimpleFtpClient.StartClient(options.ServerIp, options.Port).Wait();
+            SimpleFtpClient.StartClient(options.ServerIp, options.Port).Wait();
         });
     }
 }

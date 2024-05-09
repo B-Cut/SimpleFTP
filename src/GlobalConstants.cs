@@ -9,6 +9,7 @@ namespace SimpleFTP
 {
     class Globals
     {
-        static readonly int TRANSFER_BYTE_SIZE = 8;
+        public static readonly int TRANSFER_BYTE_SIZE = 8;
+        public static readonly string GENERIC_ERROR_MESSAGE = "-An error has occurred!";
     }
 }

@@ -2,7 +2,7 @@
   "profiles": {
     "SimpleFTP": {
       "commandName": "Project",
-      "commandLineArgs": "server randompath"
+      "commandLineArgs": "server .\\testing_ground"
     }
   }
 }
