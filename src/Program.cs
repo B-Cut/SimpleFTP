@@ -8,6 +8,7 @@
  */
 
 using System;
+using System.IO;
 using CommandLine;
 using SimpleFTP.Client;
 

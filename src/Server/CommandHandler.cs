@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Immutable;
+using System.IO;
 using System.IO.Enumeration;
 using System.Linq;
 using System.Net.Sockets;
@@ -17,28 +18,44 @@ namespace SimpleFTP.Server
     /// </summary>
     internal static class CommandHandler
     {
-        // A dictionary would be better
-        // But i couldn't make it so it receives a method
+        // A dictionary of commands and function would be better
+        // But i couldn't make it so it stored a method, so for now, the main parsing uses a big switch case
+
+
+        /// <summary>
+        /// Receives a string containing the received command and the state of the server.
+        /// Starts execution of command if it is defined, else it sends a error message to client
+        /// </summary>
+        /// <param name="command"></param>
+        /// <param name="state"></param>
+        /// <returns></returns>
         public static async Task ParseCommand(string command, SimpleFtpServerState state)
         {
             string[] splitCommand = command.Split(" ");
 
+            // All functions aside from DONE receive at least one argument
+            if (splitCommand.Length < 2 && splitCommand[0] is not "DONE")
+            {
+                await state.SendMessage($"-Insufficient arguments for command {splitCommand[0].ToUpper()}");
+                return;
+            }
+
             switch (splitCommand[0].ToUpper())
             {
                 case "USER":
-                    Console.WriteLine("Received the USER command");
+                    await HandleUser(state, splitCommand);
                     break;
                 case "ACCT":
-                    Console.WriteLine("Received the ACCT command");
+                    await HandleAcct(state, splitCommand);
                     break;
                 case "PASS":
-                    Console.WriteLine("Received the PASS command");
+                    await HandlePass(state, splitCommand);
                     break;
                 case "TYPE":
                     await HandleType(state, splitCommand);
                     break;
                 case "LIST":
-                    HandleList(state, splitCommand);
+                    await HandleList(state, splitCommand);
                     break;
                 case "CDIR":
                     Console.WriteLine("Received the CDIR command");
@@ -59,21 +76,85 @@ namespace SimpleFTP.Server
                     Console.WriteLine("Received the STOR command");
                     break;
                 default:
-                    var message = Encoding.ASCII.GetBytes($"-Invalid command");
-                    await state.Stream.WriteAsync(message, 0, message.Length);
+                    await state.SendMessage("-Invalid command");
                     break;
             }
         }
 
+        // This function deals with the user id property
+        public static async Task HandleUser(SimpleFtpServerState state, string[] splitCommand)
+        {
+            string message;
+            if (state.CurrentUser.validateUserId(splitCommand[1]))
+            {
+                if (state.CurrentUser.isUserLogged())
+                {
+                    message = $"!{state.CurrentUser.UserId} logged in";
+                } else
+                {
+                    message = "+User-id valid, send account and password";
+
+                }
+            }
+            else 
+            {
+                message = "-Invalid user, try again";
+            }
+
+            await state.SendMessage(message);
+        }
+
+        // This one with the account
+        public static async Task HandleAcct(SimpleFtpServerState state, string[] splitCommand)
+        {
+            string message;
+
+            // Verifies if account is valid
+            if (state.CurrentUser.validateAccount(splitCommand[1]))
+            {
+                // Checks if user has enough info to be logged in 
+                if (state.CurrentUser.isUserLogged())
+                {
+                    message = "!Account valid, logged in";
+                } else
+                {
+                    message = "+Account valid, send password";
+                }
+            } else
+            {
+                message = "-Invalid account, try again";
+            }
+
+            await state.SendMessage(message);
+        }
+
+        // This one with the password
+        public static async Task HandlePass(SimpleFtpServerState state, string[] splitCommand)
+        {
+            string message;
+
+            if (state.CurrentUser.validatePassword(splitCommand[1]))
+            {
+                // Checks if user has enough info to be logged in 
+                if (state.CurrentUser.isUserLogged())
+                {
+                    message = "!Logged in";
+                }
+                else
+                {
+                    message = "+Send account";
+                }
+            }
+            else
+            {
+                message = "-Wrong password, try again";
+            }
+
+            await state.SendMessage(message);
+        }
 
         public static async Task HandleType(SimpleFtpServerState state, string[] splitCommand)
         {
-            if (splitCommand.Length < 2)
-            {
-                await state.SendMessage("-Insufficient arguments");
-                return;
-            }
-
             switch (splitCommand[1].ToUpper())
             {
                 case "A":
@@ -97,8 +178,11 @@ namespace SimpleFTP.Server
             }
         }
 
+
+
         public static async Task HandleList(SimpleFtpServerState state, string[] splitCommand)
         {
+            // TODO: As chamadas que se referem a Access Control são exclusivas do Windows. Separar chamadas para Windows e para unix
             string listDirectory = state.WorkingDirectory;
 
             // Directory path is not null
@@ -120,11 +204,6 @@ namespace SimpleFTP.Server
                     await state.SendMessage($"-The directory {temp} does not exist in current path");
                     return;
                 }
-            }
-            else if (splitCommand.Length < 2)
-            {
-                await state.SendMessage("-Insufficient arguments");
-                return;
             }
             try
             {
@@ -199,5 +278,6 @@ namespace SimpleFTP.Server
 
             await state.SendMessage("-Invalid command. The format for this command is: LIST { F | V } directory path");
         }
+
     }
 }

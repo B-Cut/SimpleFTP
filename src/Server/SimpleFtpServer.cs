@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
@@ -9,57 +10,6 @@ using System.Threading.Tasks;
 
 namespace SimpleFTP.Server
 {
-    internal enum TransferType
-    {
-        ASCII,
-        BINARY,
-        CONTINUOUS
-    }
-
-    /// <summary>
-    /// This class contains the current state of the server.
-    /// </summary>
-    /// 
-
-    // If we implement this, we can execute functions using the command handler
-    internal class SimpleFtpServerState
-    {
-        private byte[] buffer;
-        private string workingDirectory;
-        private NetworkStream? stream;
-        private TransferType type;
-
-        public byte[] Buffer { get { return buffer; } }
-        public string WorkingDirectory { get { return workingDirectory; } }
-        public NetworkStream? Stream { get { return stream; } set { stream = value; } }
-        public TransferType Type { get { return type; } set { type = value; } }
-
-        public SimpleFtpServerState(byte[] buffer, string workingDirectory)
-        {
-            this.buffer = buffer;
-            this.workingDirectory = workingDirectory;
-            stream = null;
-            type = TransferType.BINARY; // Default from the specification
-        }
-
-        // Not really right by OOP standarts, but useful. Might be moved to another class if state
-        // gets too many functions/responsabilities
-        public async Task SendMessage(string message)
-        {
-            // Strings are always null terminated
-            var convertedMessage = Encoding.ASCII.GetBytes(message + "\0");
-
-            try
-            {
-                await stream.WriteAsync(convertedMessage, 0, convertedMessage.Length);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine(ex.Message);
-            }
-        }
-    }
-
     /// <summary>
     /// This class contains the logic for creating and operating the FTP server
     /// </summary>
