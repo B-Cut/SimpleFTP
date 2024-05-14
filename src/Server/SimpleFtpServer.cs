@@ -67,9 +67,7 @@ namespace SimpleFTP.Server
                 // User authenthication will happen here
                 while (true)
                 {
-                    int received = await _state.Stream.ReadAsync(_state.Buffer, 0, _state.Buffer.Length);
-                    string command = Encoding.ASCII.GetString(_state.Buffer, 0, received);
-                    Console.WriteLine($"Received command: {command}");
+                    string command = await _state.ReceiveMessage();
 
                     await CommandHandler.ParseCommand(command, _state);
                 }

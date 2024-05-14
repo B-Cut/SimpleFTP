@@ -58,7 +58,7 @@ namespace SimpleFTP.Server
                     await HandleList(state, splitCommand);
                     break;
                 case "CDIR":
-                    Console.WriteLine("Received the CDIR command");
+                    await HandleCdir(state, splitCommand);
                     break;
                 case "KILL":
                     Console.WriteLine("Received the KILL command");
@@ -188,13 +188,9 @@ namespace SimpleFTP.Server
             // Directory path is not null
             if (splitCommand.Length >= 3)
             {
-                var temp = splitCommand[2];
-                for (int i = 3; i < splitCommand.Length; i++)
-                {
-                    temp += " " + splitCommand[i];
-                }
+                // We use Skip(1) since 0 is the argument and 1 is the F/V switch
+                var temp = joinPath(listDirectory, splitCommand.Skip(2).ToArray());
 
-                temp = Path.Combine(listDirectory, temp);
                 if (Directory.Exists(temp))
                 {
                     listDirectory = temp;
@@ -216,10 +212,7 @@ namespace SimpleFTP.Server
                     foreach (var dir in dirContents)
                     {
                         string temp = dir.Replace(".\\", "");
-                        if (temp.Contains(" "))
-                        {
-                            temp = $"\"{temp}\"";
-                        }
+                        
                         temp += "\r\n";
                         message += temp;
                     }
@@ -279,5 +272,125 @@ namespace SimpleFTP.Server
             await state.SendMessage("-Invalid command. The format for this command is: LIST { F | V } directory path");
         }
 
+        private static async Task HandleCdir(SimpleFtpServerState state, string[] splitCommand)
+        {
+            // This task is a bit more involved since the server waits for another commands
+            // So we will hand for a bit here.
+
+            string path = "";
+
+            if (splitCommand[1] == "..")
+            {
+                path = Directory.GetParent(state.WorkingDirectory).FullName;
+            } else
+            {
+                path = joinPath(state.WorkingDirectory, splitCommand.Skip(1).ToArray());
+            }
+
+            if (path == ".")
+            {
+                await state.SendMessage($"-Can't connect to directory because: tried to change to current directory");
+                return;
+            }
+
+            else if (!Directory.Exists(path))
+            {
+                await state.SendMessage($"-Can't connect to directory because: directory \"{path}\" doesn't exist");
+                return;
+            }
+            else
+            {
+                if (state.CurrentUser.isUserLogged() || !state.usingAccountAndPassword())
+                {
+                    state.WorkingDirectory = path;
+                    await state.SendMessage($"!Changed working dir to {state.WorkingDirectory}");
+                } else
+                {
+                    await state.SendMessage("+directory ok, send account and password");
+                    bool canChange = await cdirWaitForLogin(state);
+                    if (canChange)
+                    {
+                        state.WorkingDirectory = path;
+                        await state.SendMessage($"!Changed working dir to {state.WorkingDirectory}");
+                    }
+                }
+            }
+        }
+
+        private static async Task<bool> cdirWaitForLogin(SimpleFtpServerState state)
+        {
+            // Ideally, this should call HandleAcct and HandlePass, but for now i'll do it like this
+            while(true)
+            {
+                string command = await state.ReceiveMessage();
+
+                var splitCommand = command.Split(' ');
+
+                if(splitCommand[0].ToUpper() != "ACCT" && splitCommand[0].ToUpper() != "PASS")
+                {
+                    // if the command is not ACCT or PASS we assume the user does not want to continue this operation
+                    // and execute the new command
+                    await ParseCommand(command, state);
+                    return false;
+                }
+                if(splitCommand.Length < 2)
+                {
+                    await state.SendMessage($"-Insufficient arguments for command: {splitCommand[0]}");
+                    continue;
+                }
+
+                if (splitCommand[0].ToUpper() == "ACCT")
+                {
+                    if (state.CurrentUser.validateAccount(splitCommand[1]))
+                    {
+                        if (state.CurrentUser.hasValidAccount() && state.CurrentUser.hasValidPassword())
+                        {
+                            return true;
+                        } else
+                        {
+                            await state.SendMessage("+account ok, send password");
+                        }
+                    } else
+                    {
+                        await state.SendMessage("-Invalid account");
+                        return false;
+                    }
+                } else if (splitCommand[0].ToUpper() == "PASS")
+                {
+                    if (state.CurrentUser.validatePassword(splitCommand[1]))
+                    {
+                        if (state.CurrentUser.hasValidAccount() && state.CurrentUser.hasValidPassword())
+                        {
+                            return true;
+                        }
+                        else
+                        {
+                            await state.SendMessage("+password ok, send password");
+                        }
+                    } else
+                    {
+                        await state.SendMessage("-Invalid password");
+                    }
+                }
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Small utility function that joins a path that cointaned spaces back into one thing
+        /// </summary>
+        /// <returns></returns>
+        private static string joinPath(string basePath, string[] separatedParts)
+        {
+            string temp = "";
+            foreach (string part in separatedParts)
+            {
+                temp += part + " ";
+            }
+
+            // Kind of wasteful but quick
+            return Path.Combine(basePath, temp.Trim());
+        }
     }
 }
