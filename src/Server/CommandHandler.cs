@@ -18,9 +18,24 @@ namespace SimpleFTP.Server
     /// </summary>
     internal static class CommandHandler
     {
-        // A dictionary of commands and function would be better
-        // But i couldn't make it so it stored a method, so for now, the main parsing uses a big switch case
-
+        // A dictionary of commands and their handler functions
+        // All of them follow the same pattern, with the same arguments and return types, so doing this is easy
+        // Doing this means not using a big switch case
+        
+        private static readonly Dictionary<string, Func<SimpleFtpServerState, string[], Task>> serverCommands = new Dictionary<string, Func<SimpleFtpServerState, string[], Task>>
+        {
+            { "USER", HandleUser },
+            { "ACCT", HandleAcct },
+            { "PASS", HandlePass },
+            { "TYPE", HandleType },
+            { "LIST", HandleList },
+            { "CDIR", HandleCdir },
+            { "KILL", HandleKill },
+            { "NAME", HandleName },
+            { "DONE", HandleDone },
+            { "RETR", HandleRetr },
+            { "STOR", HandleStor }
+        };
 
         /// <summary>
         /// Receives a string containing the received command and the state of the server.
@@ -33,52 +48,31 @@ namespace SimpleFTP.Server
         {
             string[] splitCommand = command.Split(" ");
 
-            // All functions aside from DONE receive at least one argument
-            if (splitCommand.Length < 2 && splitCommand[0] is not "DONE")
-            {
-                await state.SendMessage($"-Insufficient arguments for command {splitCommand[0].ToUpper()}");
+            var option = splitCommand[0].ToUpper();
+
+            if (!serverCommands.ContainsKey(option)) {
+                await state.SendMessage("-Invalid command");
                 return;
             }
 
-            switch (splitCommand[0].ToUpper())
+            if (!(option == "USER" || option == "ACCT" || option == "PASS") && !state.CurrentUser.isUserLogged())
             {
-                case "USER":
-                    await HandleUser(state, splitCommand);
-                    break;
-                case "ACCT":
-                    await HandleAcct(state, splitCommand);
-                    break;
-                case "PASS":
-                    await HandlePass(state, splitCommand);
-                    break;
-                case "TYPE":
-                    await HandleType(state, splitCommand);
-                    break;
-                case "LIST":
-                    await HandleList(state, splitCommand);
-                    break;
-                case "CDIR":
-                    await HandleCdir(state, splitCommand);
-                    break;
-                case "KILL":
-                    Console.WriteLine("Received the KILL command");
-                    break;
-                case "NAME":
-                    Console.WriteLine("Received the NAME command");
-                    break;
-                case "DONE":
-                    Console.WriteLine("Received the DONE command");
-                    break;
-                case "RETR":
-                    Console.WriteLine("Received the RETR command");
-                    break;
-                case "STOR":
-                    Console.WriteLine("Received the STOR command");
-                    break;
-                default:
-                    await state.SendMessage("-Invalid command");
-                    break;
+                await state.SendMessage("-User not logged");
+                return;
             }
+
+            // All functions aside from DONE receive at least one argument
+            if (splitCommand.Length < 2 && option is not "DONE")
+            {
+                await state.SendMessage($"-Insufficient arguments for command {option}");
+                return;
+            }
+
+            // After we ensure the command exists in the command dictionary, we simply access it's entry and execute the function
+            
+            // I'm not sure if this is efficient, but it's more ellegant than a big switch case
+
+            await serverCommands[option](state, splitCommand);
         }
 
         // This function deals with the user id property
@@ -373,8 +367,31 @@ namespace SimpleFTP.Server
                     }
                 }
             }
+        }
 
-            return true;
+        public static async Task HandleKill(SimpleFtpServerState state, string[] splitCommand)
+        {
+            await state.SendMessage("Received the KILL command");
+        }
+
+        public static async Task HandleName(SimpleFtpServerState state, string[] splitCommand)
+        {
+            await state.SendMessage("Received the NAME command");
+        }
+
+        public static async Task HandleDone(SimpleFtpServerState state, string[] splitCommand)
+        {
+            await state.SendMessage("Received the DONE command");
+        }
+
+        public static async Task HandleRetr(SimpleFtpServerState state, string[] splitCommand)
+        {
+            await state.SendMessage("Received the RETR command");
+        }
+
+        public static async Task HandleStor(SimpleFtpServerState state, string[] splitCommand)
+        {
+            await state.SendMessage("Received the STOR command");
         }
 
         /// <summary>
