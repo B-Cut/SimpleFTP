@@ -174,6 +174,7 @@ namespace SimpleFTP.Server
 
 
 
+        // TODO: Refactor this method
         public static async Task HandleList(SimpleFtpServerState state, string[] splitCommand)
         {
             // TODO: As chamadas que se referem a Access Control são exclusivas do Windows. Separar chamadas para Windows e para unix
@@ -195,6 +196,18 @@ namespace SimpleFTP.Server
                     return;
                 }
             }
+
+            if (splitCommand.Length == 3 && splitCommand[2] == "..")
+            {
+                listDirectory = Directory.GetParent(state.WorkingDirectory).FullName;
+            }
+
+            if (!Path.GetFullPath(listDirectory).Contains(state.ServerFolder))
+            {
+                await state.SendMessage("-Directory out of server scope");
+                return;
+            }
+
             try
             {
                 
@@ -276,6 +289,11 @@ namespace SimpleFTP.Server
             if (splitCommand[1] == "..")
             {
                 path = Directory.GetParent(state.WorkingDirectory).FullName;
+                if (!path.Contains(state.ServerFolder))
+                {
+                    await state.SendMessage("-Can't connect to directory because: outside of server scope");
+                    return;
+                }
             } else
             {
                 path = joinPath(state.WorkingDirectory, splitCommand.Skip(1).ToArray());
@@ -371,7 +389,42 @@ namespace SimpleFTP.Server
 
         public static async Task HandleKill(SimpleFtpServerState state, string[] splitCommand)
         {
-            await state.SendMessage("Received the KILL command");
+            var filename = splitCommand[1];
+            var filePath = Path.Combine(state.WorkingDirectory, filename);
+            
+            // We can only delete a file that's on the current work directory
+            if (!File.Exists(filePath) || !Path.GetFullPath(filePath).Contains(state.WorkingDirectory))
+            {
+                await state.SendMessage("-Not deleted because: File does not exist in current path");
+                return;
+            }
+
+            try
+            {
+                File.Delete(filePath);
+                await state.SendMessage($"+{filename} deleted");
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                Console.WriteLine(ex.Message);
+                if (Directory.Exists(filePath))
+                {
+                    await state.SendMessage($"-Not deleted because: {filename} is a directory");
+                }
+                else await state.SendMessage("-Not deleted because: Operation not authorized");
+            }
+            catch (IOException ex)
+            {
+                Console.WriteLine(ex.Message);
+                await state.SendMessage($"-Not deleted because: {filename} is in use");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex.Message);
+                await state.SendMessage("-Not deleted because: Unindentified error");
+            }
+
+            return;
         }
 
         public static async Task HandleName(SimpleFtpServerState state, string[] splitCommand)

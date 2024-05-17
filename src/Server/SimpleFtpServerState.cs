@@ -25,22 +25,39 @@ namespace SimpleFTP.Server
     internal class SimpleFtpServerState
     {
         private byte[] buffer;
+        private readonly string serverFolder;
         private string workingDirectory;
         private NetworkStream? stream;
         private TransferType type;
         private User user;
         private bool useAccountAndPassword;
 
-        public byte[] Buffer { get { return buffer; } }
+        /// <summary>
+        /// Current working directory
+        /// </summary>
         public string WorkingDirectory { get { return workingDirectory; } set { workingDirectory = value; } }
+        /// <summary>
+        /// Network stream currently connected
+        /// </summary>
         public NetworkStream? Stream { get { return stream; } set { stream = value; } }
+        /// <summary>
+        /// Specifies current transfer type
+        /// </summary>
         public TransferType Type { get { return type; } set { type = value; } }
+        /// <summary>
+        /// Stores information about the current user
+        /// </summary>
         public User CurrentUser { get { return user;  } }
+        /// <summary>
+        /// Stores the original folder. Server should not go above this.
+        /// </summary>
+        public string ServerFolder { get { return serverFolder;  } }
 
         public SimpleFtpServerState(byte[] buffer, string workingDirectory, bool useAccountAndPassword = true)
         {
             this.buffer = buffer;
-            this.workingDirectory = Path.GetFullPath(workingDirectory);
+            serverFolder = Path.GetFullPath(workingDirectory);
+            this.workingDirectory = serverFolder;
             this.useAccountAndPassword = useAccountAndPassword;
             stream = null;
             user = new User(useAccountAndPassword);
@@ -54,6 +71,11 @@ namespace SimpleFTP.Server
 
         public async Task<string> ReceiveMessage()
         {
+            if (stream == null)
+            {
+                throw new InvalidOperationException();
+            }
+
             int received = await stream.ReadAsync(buffer, 0, buffer.Length);
             string command = Encoding.ASCII.GetString(buffer, 0, received);
             Console.WriteLine($"Received command: {command}");
@@ -62,6 +84,12 @@ namespace SimpleFTP.Server
 
         public async Task SendMessage(string message)
         {
+            if (stream == null)
+            {
+                throw new InvalidOperationException();
+            }
+
+
             // Strings are always null terminated
             var convertedMessage = Encoding.ASCII.GetBytes(message + "\0");
 
