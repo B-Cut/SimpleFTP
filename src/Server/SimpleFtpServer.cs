@@ -18,8 +18,8 @@ namespace SimpleFTP.Server
         // Port that the server listens to
         private readonly int _port;
         private TcpListener _listener;
+        private string _workingDirectory;
         // Information about the server current state
-        private SimpleFtpServerState _state;
 
 
         /// <summary>
@@ -32,16 +32,9 @@ namespace SimpleFTP.Server
         public SimpleFtpServer(string workingDirectoryPath, int port = 115)
         {
             _port = port;
-            _state = new SimpleFtpServerState(new byte[1024], workingDirectoryPath);
+            _workingDirectory = workingDirectoryPath;
             _listener = new TcpListener(IPAddress.Loopback, _port);
             StartServer().Wait();
-        }
-
-        // Separating the startup and the actual running of the server might make it more
-        // error resistant
-        private async Task RunServer()
-        {
-
         }
 
         // Actual server logic comes here
@@ -53,31 +46,18 @@ namespace SimpleFTP.Server
                 _listener.Start();
                 Console.WriteLine("Server started...");
                 Console.WriteLine($"Awaiting connection on {_listener.LocalEndpoint}...");
-                using TcpClient handler = _listener.AcceptTcpClient();
-                Console.WriteLine("Stabilishing a stream...");
-                _state.Stream = handler.GetStream();
-
-                // Not sure when i should send a negative connection yet
-                Console.WriteLine("Connection sucessful, sending positive to client");
-                var message = Encoding.ASCII.GetBytes($"+{Dns.GetHostName()} SFTP Service");
-                await _state.Stream.WriteAsync(message, 0, message.Length);
-
-                // Now we keep the connection alive and wait for the user messages
-
-                // User authenthication will happen here
                 while (true)
-                {
-                    string command = await _state.ReceiveMessage();
+                {                  
+                    TcpClient client = await _listener.AcceptTcpClientAsync();
+                    Console.WriteLine("Stabilishing connection...");
 
-                    await CommandHandler.ParseCommand(command, _state);
-                }
+                    // Creating a connection
+                    var newConnection = new ServerConnection(new byte[1024], _workingDirectory, client);
 
+                    // Now we create a thread to keep the connection alive and wait for the user messages
 
-            }
-            catch (IOException e)
-            {
-                Console.WriteLine("Connection was forcibly closed");
-                // TODO: Make server persist through connection closing
+                    _ = Task.Factory.StartNew(newConnection.Execute, TaskCreationOptions.LongRunning);
+                }         
             }
             catch (Exception e)
             {

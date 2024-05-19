@@ -14,7 +14,7 @@ namespace SimpleFTP.Server
         private string account;
         private string userid;
         private bool providedPassword;
-        private bool useAccountAndPassword;
+        private readonly bool useAccountAndPassword;
         private bool logged;
 
         public string UserId { get { return userid; } }
@@ -34,16 +34,16 @@ namespace SimpleFTP.Server
         /// Verifies if user is already logged in.
         /// </summary>
         /// <returns></returns>
-        public bool isUserLogged()
+        public bool IsUserLogged()
         {
             if (!useAccountAndPassword)
             {
-                return hasValidUserId();
+                return HasValidUserId();
             }
             // The user can provide their login info in about any order, so doing this guarantees we check if all conditions are met
             if (!logged)
             {
-                if (hasValidPassword() && hasValidUserId() && hasValidAccount())
+                if (HasValidPassword() && HasValidUserId() && HasValidAccount())
                 {
                     logged = true;
                 }
@@ -55,7 +55,7 @@ namespace SimpleFTP.Server
         /// Verifies if user has already privided a account
         /// </summary>
         /// <returns></returns>
-        public bool hasValidAccount()
+        public bool HasValidAccount()
         {
             return account != "";
         }
@@ -63,7 +63,7 @@ namespace SimpleFTP.Server
         /// Verifies if user has already provided a userId
         /// </summary>
         /// <returns></returns>
-        public bool hasValidUserId()
+        public bool HasValidUserId()
         {
             return userid != "";
         }
@@ -71,7 +71,7 @@ namespace SimpleFTP.Server
         /// Verifies if user has already provided a password
         /// </summary>
         /// <returns></returns>
-        public bool hasValidPassword()
+        public bool HasValidPassword()
         {
             return providedPassword;
         }
@@ -82,7 +82,7 @@ namespace SimpleFTP.Server
         /// </summary>
         /// <param name="account"></param>
         /// <returns></returns>
-        public bool validateUserId(string userid)
+        public bool ValidateUserId(string userid)
         {
             if (this.userid == "")
             {
@@ -96,7 +96,7 @@ namespace SimpleFTP.Server
         /// </summary>
         /// <param name="account"></param>
         /// <returns></returns>
-        public bool validateAccount(string account)
+        public bool ValidateAccount(string account)
         {
             if(this.account == "")
             {
@@ -109,7 +109,7 @@ namespace SimpleFTP.Server
         /// </summary>
         /// <param name="account"></param>
         /// <returns></returns>
-        public bool validatePassword(string password)
+        public bool ValidatePassword(string password)
         {      
             providedPassword = true;
             return true;

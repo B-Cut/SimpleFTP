@@ -3,6 +3,7 @@ using System.Collections.Immutable;
 using System.IO;
 using System.IO.Enumeration;
 using System.Linq;
+using System.Net;
 using System.Net.Sockets;
 using System.Security.AccessControl;
 using System.Security.Principal;
@@ -22,7 +23,7 @@ namespace SimpleFTP.Server
         // All of them follow the same pattern, with the same arguments and return types, so doing this is easy
         // Doing this means not using a big switch case
         
-        private static readonly Dictionary<string, Func<SimpleFtpServerState, string[], Task>> serverCommands = new Dictionary<string, Func<SimpleFtpServerState, string[], Task>>
+        private static readonly Dictionary<string, Func<ServerConnection, string[], Task>> serverCommands = new Dictionary<string, Func<ServerConnection, string[], Task>>
         {
             { "USER", HandleUser },
             { "ACCT", HandleAcct },
@@ -44,7 +45,7 @@ namespace SimpleFTP.Server
         /// <param name="command"></param>
         /// <param name="state"></param>
         /// <returns></returns>
-        public static async Task ParseCommand(string command, SimpleFtpServerState state)
+        public static async Task ParseCommand(string command, ServerConnection state)
         {
             string[] splitCommand = command.Split(" ");
 
@@ -55,7 +56,7 @@ namespace SimpleFTP.Server
                 return;
             }
 
-            if (!(option == "USER" || option == "ACCT" || option == "PASS") && !state.CurrentUser.isUserLogged())
+            if (!(option == "USER" || option == "ACCT" || option == "PASS" || option == "DONE") && !state.CurrentUser.IsUserLogged())
             {
                 await state.SendMessage("-User not logged");
                 return;
@@ -76,12 +77,12 @@ namespace SimpleFTP.Server
         }
 
         // This function deals with the user id property
-        public static async Task HandleUser(SimpleFtpServerState state, string[] splitCommand)
+        public static async Task HandleUser(ServerConnection state, string[] splitCommand)
         {
             string message;
-            if (state.CurrentUser.validateUserId(splitCommand[1]))
+            if (state.CurrentUser.ValidateUserId(splitCommand[1]))
             {
-                if (state.CurrentUser.isUserLogged())
+                if (state.CurrentUser.IsUserLogged())
                 {
                     message = $"!{state.CurrentUser.UserId} logged in";
                 } else
@@ -99,15 +100,15 @@ namespace SimpleFTP.Server
         }
 
         // This one with the account
-        public static async Task HandleAcct(SimpleFtpServerState state, string[] splitCommand)
+        public static async Task HandleAcct(ServerConnection state, string[] splitCommand)
         {
             string message;
 
             // Verifies if account is valid
-            if (state.CurrentUser.validateAccount(splitCommand[1]))
+            if (state.CurrentUser.ValidateAccount(splitCommand[1]))
             {
                 // Checks if user has enough info to be logged in 
-                if (state.CurrentUser.isUserLogged())
+                if (state.CurrentUser.IsUserLogged())
                 {
                     message = "!Account valid, logged in";
                 } else
@@ -123,14 +124,14 @@ namespace SimpleFTP.Server
         }
 
         // This one with the password
-        public static async Task HandlePass(SimpleFtpServerState state, string[] splitCommand)
+        public static async Task HandlePass(ServerConnection state, string[] splitCommand)
         {
             string message;
 
-            if (state.CurrentUser.validatePassword(splitCommand[1]))
+            if (state.CurrentUser.ValidatePassword(splitCommand[1]))
             {
                 // Checks if user has enough info to be logged in 
-                if (state.CurrentUser.isUserLogged())
+                if (state.CurrentUser.IsUserLogged())
                 {
                     message = "!Logged in";
                 }
@@ -147,7 +148,7 @@ namespace SimpleFTP.Server
             await state.SendMessage(message);
         }
 
-        public static async Task HandleType(SimpleFtpServerState state, string[] splitCommand)
+        public static async Task HandleType(ServerConnection state, string[] splitCommand)
         {
             switch (splitCommand[1].ToUpper())
             {
@@ -175,7 +176,7 @@ namespace SimpleFTP.Server
 
 
         // TODO: Refactor this method
-        public static async Task HandleList(SimpleFtpServerState state, string[] splitCommand)
+        public static async Task HandleList(ServerConnection state, string[] splitCommand)
         {
             // TODO: As chamadas que se referem a Access Control são exclusivas do Windows. Separar chamadas para Windows e para unix
             string listDirectory = state.WorkingDirectory;
@@ -199,7 +200,7 @@ namespace SimpleFTP.Server
 
             if (splitCommand.Length == 3 && splitCommand[2] == "..")
             {
-                listDirectory = Directory.GetParent(state.WorkingDirectory).FullName;
+                listDirectory = Directory.GetParent(state.WorkingDirectory)!.FullName;
             }
 
             if (!Path.GetFullPath(listDirectory).Contains(state.ServerFolder))
@@ -279,7 +280,7 @@ namespace SimpleFTP.Server
             await state.SendMessage("-Invalid command. The format for this command is: LIST { F | V } directory path");
         }
 
-        private static async Task HandleCdir(SimpleFtpServerState state, string[] splitCommand)
+        private static async Task HandleCdir(ServerConnection state, string[] splitCommand)
         {
             // This task is a bit more involved since the server waits for another commands
             // So we will hand for a bit here.
@@ -288,7 +289,7 @@ namespace SimpleFTP.Server
 
             if (splitCommand[1] == "..")
             {
-                path = Directory.GetParent(state.WorkingDirectory).FullName;
+                path = Directory.GetParent(state.WorkingDirectory)!.FullName;
                 if (!path.Contains(state.ServerFolder))
                 {
                     await state.SendMessage("-Can't connect to directory because: outside of server scope");
@@ -312,7 +313,7 @@ namespace SimpleFTP.Server
             }
             else
             {
-                if (state.CurrentUser.isUserLogged() || !state.usingAccountAndPassword())
+                if (state.CurrentUser.IsUserLogged() || !state.usingAccountAndPassword())
                 {
                     state.WorkingDirectory = path;
                     await state.SendMessage($"!Changed working dir to {state.WorkingDirectory}");
@@ -329,7 +330,7 @@ namespace SimpleFTP.Server
             }
         }
 
-        private static async Task<bool> cdirWaitForLogin(SimpleFtpServerState state)
+        private static async Task<bool> cdirWaitForLogin(ServerConnection state)
         {
             // Ideally, this should call HandleAcct and HandlePass, but for now i'll do it like this
             while(true)
@@ -353,9 +354,9 @@ namespace SimpleFTP.Server
 
                 if (splitCommand[0].ToUpper() == "ACCT")
                 {
-                    if (state.CurrentUser.validateAccount(splitCommand[1]))
+                    if (state.CurrentUser.ValidateAccount(splitCommand[1]))
                     {
-                        if (state.CurrentUser.hasValidAccount() && state.CurrentUser.hasValidPassword())
+                        if (state.CurrentUser.HasValidAccount() && state.CurrentUser.HasValidPassword())
                         {
                             return true;
                         } else
@@ -369,9 +370,9 @@ namespace SimpleFTP.Server
                     }
                 } else if (splitCommand[0].ToUpper() == "PASS")
                 {
-                    if (state.CurrentUser.validatePassword(splitCommand[1]))
+                    if (state.CurrentUser.ValidatePassword(splitCommand[1]))
                     {
-                        if (state.CurrentUser.hasValidAccount() && state.CurrentUser.hasValidPassword())
+                        if (state.CurrentUser.HasValidAccount() && state.CurrentUser.HasValidPassword())
                         {
                             return true;
                         }
@@ -387,7 +388,7 @@ namespace SimpleFTP.Server
             }
         }
 
-        public static async Task HandleKill(SimpleFtpServerState state, string[] splitCommand)
+        public static async Task HandleKill(ServerConnection state, string[] splitCommand)
         {
             var filename = splitCommand[1];
             var filePath = Path.Combine(state.WorkingDirectory, filename);
@@ -411,7 +412,7 @@ namespace SimpleFTP.Server
                 {
                     await state.SendMessage($"-Not deleted because: {filename} is a directory");
                 }
-                else await state.SendMessage("-Not deleted because: Operation not authorized");
+                else await state.SendMessage("-Not deleted because: Unauthorized operation");
             }
             catch (IOException ex)
             {
@@ -427,22 +428,88 @@ namespace SimpleFTP.Server
             return;
         }
 
-        public static async Task HandleName(SimpleFtpServerState state, string[] splitCommand)
+        public static async Task HandleName(ServerConnection state, string[] splitCommand)
         {
-            await state.SendMessage("Received the NAME command");
+            string filePath = splitCommand[1];
+            if(splitCommand.Length > 3)
+            {
+                filePath = joinPath(state.WorkingDirectory, splitCommand.Skip(1).ToArray());
+            }
+
+            filePath = Path.Combine(state.WorkingDirectory, filePath);
+            filePath = Path.GetFullPath(filePath); // Resolving any ..
+
+            if (!filePath.Contains(state.WorkingDirectory) || !File.Exists(filePath))
+            {
+                await state.SendMessage($"-Can't find {Path.GetFileName(filePath)}");
+                return;
+            }
+
+            await state.SendMessage("+File Exists");
+
+            while (true)
+            {
+                string tobe = await state.ReceiveMessage();
+
+
+                var tobeSplit = tobe.Split(' ');
+
+                if (tobeSplit[0].ToUpper() != "TOBE")
+                {
+                    // If the command received is not TOBE, then just go back to execution
+                    await ParseCommand(tobe, state);
+                    break;
+                }
+                if (tobeSplit.Length == 1)
+                {
+                    await state.SendMessage("-No name received");
+                    return;
+                }
+
+                string newPath;
+
+                if (tobeSplit.Length > 2)
+                {
+                    newPath = joinPath(state.WorkingDirectory, tobeSplit.Skip(1).ToArray());
+                }
+                else newPath = Path.Combine(state.WorkingDirectory, tobeSplit[1]);
+
+                try
+                {
+                    File.Move(filePath, newPath);
+                    await state.SendMessage($"+{Path.GetFileName(filePath)} renamed to {Path.GetFileName(newPath)}");
+                }
+                catch (UnauthorizedAccessException ex)
+                {
+                    Console.WriteLine(ex.Message);
+                    await state.SendMessage("-File wasn't renamed because: Unauthorized Operation");
+                }
+                catch (IOException ex)
+                {
+                    Console.WriteLine(ex.Message);
+                    await state.SendMessage($"-File wasn't renamed because: {Path.GetFileName(filePath)} is in use");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine(ex.Message);
+                    await state.SendMessage("-File wasn't renamed because: Unindentified error");
+                }
+            }
+            return;
         }
 
-        public static async Task HandleDone(SimpleFtpServerState state, string[] splitCommand)
+        public static async Task HandleDone(ServerConnection state, string[] splitCommand)
         {
-            await state.SendMessage("Received the DONE command");
+            await state.SendMessage($"+Ended connection to {Dns.GetHostName()}");
+            state.Close();
         }
 
-        public static async Task HandleRetr(SimpleFtpServerState state, string[] splitCommand)
+        public static async Task HandleRetr(ServerConnection state, string[] splitCommand)
         {
             await state.SendMessage("Received the RETR command");
         }
 
-        public static async Task HandleStor(SimpleFtpServerState state, string[] splitCommand)
+        public static async Task HandleStor(ServerConnection state, string[] splitCommand)
         {
             await state.SendMessage("Received the STOR command");
         }

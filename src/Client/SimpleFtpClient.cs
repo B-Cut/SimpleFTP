@@ -30,16 +30,21 @@ namespace SimpleFTP.Client
             var message = Encoding.ASCII.GetString(buffer, 0, received);
             Console.WriteLine(message);
 
-            while (true)
-            {
-                Console.Write("> ");
-                string toSend = Console.ReadLine();
-                if (toSend != null)
+            while (true) {
                 {
+                    Console.Write("> ");
+                    string toSend = Console.ReadLine()!;
+
                     await stream.WriteAsync(Encoding.ASCII.GetBytes(toSend, 0, toSend.Length), 0, toSend.Length);
+
                     received = await stream.ReadAsync(buffer);
                     message = Encoding.ASCII.GetString(buffer, 0, received);
                     Console.WriteLine(message);
+
+                    if (toSend.Contains("done", StringComparison.OrdinalIgnoreCase))
+                    {
+                        break;
+                    }
                 }
             }
         }
