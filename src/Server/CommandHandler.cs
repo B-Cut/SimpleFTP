@@ -5,11 +5,14 @@ using System.IO.Enumeration;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Security;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Text;
 using System.Threading.Tasks;
 using SimpleFTP;
+
+using SimpleFTP.src;
 
 namespace SimpleFTP.Server
 {
@@ -506,7 +509,61 @@ namespace SimpleFTP.Server
 
         public static async Task HandleRetr(ServerConnection state, string[] splitCommand)
         {
-            await state.SendMessage("Received the RETR command");
+            var fileName = splitCommand.Skip(1).Aggregate("", (accumulator, next) => accumulator = " " + next, result => result).Trim();
+            var path = Path.Combine(state.WorkingDirectory, fileName);
+            if(!File.Exists(path))
+            {
+                await state.SendMessage("-File doesn't exist");
+                return;
+            }
+
+            try
+            {
+                FileInfo fileInfo = new FileInfo(path);
+                if (fileInfo.Length == 0)
+                {
+                    await state.SendMessage("-File is empty, aborting connection");
+                    return;
+                }
+                await state.SendMessage(fileInfo.Length.ToString());
+            } catch (UnauthorizedAccessException ex)
+            {
+                Console.Error.WriteLine(ex.Message);
+                await state.SendMessage("-Unauthorized Operation");
+            } catch (PathTooLongException ex)
+            {
+                Console.Error.WriteLine(ex.Message);
+                await state.SendMessage("-File name too long");
+            } catch (SecurityException ex)
+            {
+                Console.Error.WriteLine(ex.Message);
+                await state.SendMessage("-Program does not have the permission to access the file");
+            } catch (Exception ex)
+            {
+                Console.Error.WriteLine(ex.Message);
+                await state.SendMessage("-Unindentified error");
+            }
+
+            while (true)
+            {
+                string send = await state.ReceiveMessage();
+                if (send.Trim().Equals("SEND", StringComparison.OrdinalIgnoreCase))
+                {
+                    FileTransfer.SendFile(path, state.Type, state.Stream).Wait();
+                    break;
+                } else if(send.Trim().Equals("STOP", StringComparison.OrdinalIgnoreCase))
+                {
+                    await state.SendMessage("+ok, RETR aborted");
+                    return;
+                }
+                else
+                {
+                    await state.SendMessage("-Unexpected command, RETR aborted");
+                    return;
+                }
+            }
+
+            await state.SendMessage("+Finished file transfer");
         }
 
         public static async Task HandleStor(ServerConnection state, string[] splitCommand)

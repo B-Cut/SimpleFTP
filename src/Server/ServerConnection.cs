@@ -6,17 +6,14 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading.Tasks;
 
+using SimpleFTP.src;
+
 namespace SimpleFTP.Server
 {
     /// <summary>
     /// Defines the transfer type to be used by the server during file transfer
     /// </summary>
-    internal enum TransferType
-    {
-        ASCII,
-        BINARY,
-        CONTINUOUS
-    }
+    
 
     /// <summary>
     /// This class represents a active connection to the server and it's properties

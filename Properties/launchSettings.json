@@ -2,7 +2,7 @@
   "profiles": {
     "SimpleFTP": {
       "commandName": "Project",
-      "commandLineArgs": "server .\\testing_ground"
+      "commandLineArgs": "client localhost"
     }
   }
 }
